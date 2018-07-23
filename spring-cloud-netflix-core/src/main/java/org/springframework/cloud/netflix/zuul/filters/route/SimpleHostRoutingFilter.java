@@ -16,32 +16,15 @@
 
 package org.springframework.cloud.netflix.zuul.filters.route;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
-
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
-import javax.servlet.http.HttpServletRequest;
-
+import com.netflix.zuul.ZuulFilter;
+import com.netflix.zuul.context.RequestContext;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.http.Header;
-import org.apache.http.HttpHost;
-import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
+import org.apache.http.*;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPatch;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.*;
 import org.apache.http.conn.HttpClientConnectionManager;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.InputStreamEntity;
@@ -49,6 +32,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.message.BasicHttpEntityEnclosingRequest;
 import org.apache.http.message.BasicHttpRequest;
+import org.apache.http.params.HttpParams;
 import org.springframework.cloud.commons.httpclient.ApacheHttpClientConnectionManagerFactory;
 import org.springframework.cloud.commons.httpclient.ApacheHttpClientFactory;
 import org.springframework.cloud.context.environment.EnvironmentChangeEvent;
@@ -62,8 +46,15 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 
-import com.netflix.zuul.ZuulFilter;
-import com.netflix.zuul.context.RequestContext;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.*;
 
 import static org.springframework.cloud.netflix.zuul.filters.support.FilterConstants.ROUTE_TYPE;
 import static org.springframework.cloud.netflix.zuul.filters.support.FilterConstants.SIMPLE_HOST_ROUTING_FILTER_ORDER;
@@ -263,13 +254,13 @@ public class SimpleHostRoutingFilter extends ZuulFilter {
 		InputStreamEntity entity = new InputStreamEntity(requestEntity, contentLength,
 				contentType);
 
-		HttpRequest httpRequest = buildHttpRequest(verb, uri, entity, headers, params,
+		HttpRequest httpRequest = buildHttpRequest(verb, host.toString(), entity, headers, params,
 				request);
+		HttpUriRequest httpUriRequest = buildHttpUriRequest(httpRequest);
 		try {
 			log.debug(httpHost.getHostName() + " " + httpHost.getPort() + " "
 					+ httpHost.getSchemeName());
-			CloseableHttpResponse zuulResponse = forwardRequest(httpclient, httpHost,
-					httpRequest);
+			CloseableHttpResponse zuulResponse = forwardRequest(httpclient,	httpUriRequest);
 			this.helper.appendDebug(info, zuulResponse.getStatusLine().getStatusCode(),
 					revertHeaders(zuulResponse.getAllHeaders()));
 			return zuulResponse;
@@ -280,6 +271,125 @@ public class SimpleHostRoutingFilter extends ZuulFilter {
 			// immediate deallocation of all system resources
 			// httpclient.getConnectionManager().shutdown();
 		}
+	}
+
+	private HttpUriRequest buildHttpUriRequest(final HttpRequest httpRequest) {
+		HttpUriRequest httpUriRequest = new HttpUriRequest() {
+			@Override
+			public String getMethod() {
+				return httpRequest.getRequestLine().getMethod();
+			}
+
+			@Override
+			public URI getURI() {
+				try {
+					return new URI(httpRequest.getRequestLine().getUri());
+				} catch (URISyntaxException e) {
+					e.printStackTrace();
+				}
+				return null;
+			}
+
+			@Override
+			public void abort() throws UnsupportedOperationException {
+			}
+
+			@Override
+			public boolean isAborted() {
+				return false;
+			}
+
+			@Override
+			public RequestLine getRequestLine() {
+				return httpRequest.getRequestLine();
+			}
+
+			@Override
+			public ProtocolVersion getProtocolVersion() {
+				return httpRequest.getProtocolVersion();
+			}
+
+			@Override
+			public boolean containsHeader(String s) {
+				return httpRequest.containsHeader(s);
+			}
+
+			@Override
+			public Header[] getHeaders(String s) {
+				return httpRequest.getHeaders(s);
+			}
+
+			@Override
+			public Header getFirstHeader(String s) {
+				return httpRequest.getFirstHeader(s);
+			}
+
+			@Override
+			public Header getLastHeader(String s) {
+				return httpRequest.getLastHeader(s);
+			}
+
+			@Override
+			public Header[] getAllHeaders() {
+				return httpRequest.getAllHeaders();
+			}
+
+			@Override
+			public void addHeader(Header header) {
+				httpRequest.addHeader(header);
+			}
+
+			@Override
+			public void addHeader(String s, String s1) {
+				httpRequest.addHeader(s, s1);
+			}
+
+			@Override
+			public void setHeader(Header header) {
+				httpRequest.setHeader(header);
+			}
+
+			@Override
+			public void setHeader(String s, String s1) {
+				httpRequest.setHeader(s, s1);
+			}
+
+			@Override
+			public void setHeaders(Header[] headers) {
+				httpRequest.setHeaders(headers);
+			}
+
+			@Override
+			public void removeHeader(Header header) {
+				httpRequest.removeHeader(header);
+			}
+
+			@Override
+			public void removeHeaders(String s) {
+				httpRequest.removeHeaders(s);
+			}
+
+			@Override
+			public HeaderIterator headerIterator() {
+				return httpRequest.headerIterator();
+			}
+
+			@Override
+			public HeaderIterator headerIterator(String s) {
+				return httpRequest.headerIterator(s);
+			}
+
+			@Override
+			public HttpParams getParams() {
+				return httpRequest.getParams();
+			}
+
+			@Override
+			public void setParams(HttpParams httpParams) {
+				httpRequest.setParams(httpParams);
+			}
+		};
+		return httpUriRequest;
 	}
 
 	protected HttpRequest buildHttpRequest(String verb, String uri,
@@ -348,8 +458,8 @@ public class SimpleHostRoutingFilter extends ZuulFilter {
 	}
 
 	private CloseableHttpResponse forwardRequest(CloseableHttpClient httpclient,
-			HttpHost httpHost, HttpRequest httpRequest) throws IOException {
-		return httpclient.execute(httpHost, httpRequest);
+			 HttpRequest httpRequest) throws IOException {
+		return httpclient.execute((HttpUriRequest) httpRequest);
 	}
 
 	private HttpHost getHttpHost(URL host) {
